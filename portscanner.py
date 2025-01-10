@@ -1,20 +1,33 @@
-import socket
-import termcolor
-import threading
-import tqdm
-import argparse
-import ipaddress
+import os
+import subprocess
+import sys
 
-# Function to log results to a file
-def log_result(message):
-    with open("scan_results.txt", "a") as f:
-        f.write(message + "\n")
+# Function to install missing modules
+def install_missing_modules(module_name):
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", module_name])
+        print(f"[+] Successfully installed {module_name}")
+    except Exception as e:
+        print(f"[-] Failed to install {module_name}. Error: {e}")
+
+# Ensure required modules are installed
+try:
+    import socket
+    import termcolor
+    import threading
+    import argparse
+except ModuleNotFoundError as e:
+    missing_module = str(e).split("'")[1]
+    print(f"[-] Module '{missing_module}' not found. Attempting to install...")
+    install_missing_modules(missing_module)
+    print("[+] Restart the script after installation.")
+    sys.exit()
 
 # Function to scan a single TCP port
 def scan_port(ip_add, port):
     try:
-        sock = socket.socket()
-        sock.settimeout(0.5)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)  # Set timeout for faster scanning
         sock.connect((ip_add, port))
         try:
             banner = sock.recv(1024).decode().strip()
@@ -22,79 +35,41 @@ def scan_port(ip_add, port):
         except:
             result = f"[+] Port {port} is open"
         print(termcolor.colored(result, "green"))
-        log_result(result)
         sock.close()
-    except:
+    except Exception as e:
         pass
 
-# Function to scan a single UDP port
-def scan_udp_port(ip_add, port):
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1)
-        sock.sendto(b"", (ip_add, port))
-        sock.recvfrom(1024)
-        result = f"[+] UDP Port {port} is open"
-        print(termcolor.colored(result, "blue"))
-        log_result(result)
-        sock.close()
-    except:
-        pass
-
-# Function to scan ports for a target
-def scan(target, port_range, protocol="tcp"):
-    print(f"\nStarting scan for {target}")
+# Function to scan a range of ports for a target
+def scan(target, port_range):
+    print(termcolor.colored(f"\nStarting scan for {target}", "cyan"))
     threads = []
-    for p in tqdm.tqdm(range(1, port_range + 1), desc="Scanning"):
-        if protocol == "tcp":
-            t = threading.Thread(target=scan_port, args=(target, p))
-        elif protocol == "udp":
-            t = threading.Thread(target=scan_udp_port, args=(target, p))
+    for port in range(1, port_range + 1):
+        t = threading.Thread(target=scan_port, args=(target, port))
         threads.append(t)
         t.start()
 
     for t in threads:
         t.join()
 
-# Main function
+# Main function to handle user input and initiate scanning
 def main():
-    parser = argparse.ArgumentParser(description="Port Scanner")
-    parser.add_argument("target", help="Target IP or domain (comma-separated for multiple targets)")
-    parser.add_argument("port", type=int, help="Port range to scan (e.g., 1000 for 1-1000)")
-    parser.add_argument("--protocol", choices=["tcp", "udp"], default="tcp", help="Protocol to scan (default: TCP)")
-    parser.add_argument("--common", action="store_true", help="Scan only common ports")
+    parser = argparse.ArgumentParser(description="Simple Port Scanner")
+    parser.add_argument("target", help="Target IP address or domain name")
+    parser.add_argument("port_range", type=int, help="Range of ports to scan (e.g., 1000 for 1-1000)")
     args = parser.parse_args()
 
-    targets = args.target.split(',')
-    port_range = args.port
-    protocol = args.protocol
+    target = args.target
+    port_range = args.port_range
 
-    # Validate IP addresses
-    for target in targets:
-        try:
-            ipaddress.ip_address(target.strip())
-        except ValueError:
-            print(termcolor.colored(f"Invalid IP address: {target}", "red"))
-            return
+    # Validate the target
+    try:
+        socket.gethostbyname(target)
+    except socket.gaierror:
+        print(termcolor.colored(f"[-] Invalid target: {target}", "red"))
+        return
 
-    # Common ports
-    common_ports = [20, 21, 22, 23, 25, 53, 80, 110, 443]
-    if args.common:
-        port_range = len(common_ports)
-
-    # Scan targets
-    for target in targets:
-        target = target.strip()
-        if args.common:
-            print(f"\nScanning common ports for {target}")
-            for port in common_ports:
-                if protocol == "tcp":
-                    scan_port(target, port)
-                elif protocol == "udp":
-                    scan_udp_port(target, port)
-        else:
-            scan(target, port_range, protocol)
+    # Start scanning
+    scan(target, port_range)
 
 if __name__ == "__main__":
     main()
-
