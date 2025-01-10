@@ -27,8 +27,9 @@ except ModuleNotFoundError as e:
 def scan_port(ip_add, port):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.5)  # Set timeout for faster scanning
+        sock.settimeout(2)  # Increased timeout
         sock.connect((ip_add, port))
+        print(f"[DEBUG] Successfully connected to port {port}")
         try:
             banner = sock.recv(1024).decode().strip()
             result = f"[+] Port {port} is open: {banner}"
@@ -36,8 +37,10 @@ def scan_port(ip_add, port):
             result = f"[+] Port {port} is open"
         print(termcolor.colored(result, "green"))
         sock.close()
+    except socket.timeout:
+        print(f"[DEBUG] Port {port} is closed or unreachable. Error: timeout")
     except Exception as e:
-        pass
+        print(f"[DEBUG] Port {port} is closed or unreachable. Error: {e}")
 
 # Function to scan a range of ports for a target
 def scan(target, port_range):
